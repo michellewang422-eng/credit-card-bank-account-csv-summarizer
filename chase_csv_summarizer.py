@@ -18,18 +18,21 @@ from pathlib import Path                # 处理文件路径
 
 @dataclass
 class Transaction:                # 一笔交易
-    date: date                    # 日期
+    date: date                    # 交易日期
+    post_date: date               # 入账日期
     description: str              # 商家名字
     category: str                 # 消费分类
-    amount: float                 # 金额，负数=支出，正数=收入
+    amount: float                 # 金额，负数=支出，正数=收入/还款
     tx_type: str                  # 交易类型
+    memo: str                     # 备注
 
 
 @dataclass
 class Summary:                    # 汇总报告
     total_transactions: int       # 总笔数
-    total_spending: float         # 总支出（正数）
-    by_category: list             # 分类汇总，每项是 [分类名, 笔数, 总金额（负=支出，正=收入）]
+    total_spending: float         # 总支出（正数显示）
+    total_credits: float          # 总收入/还款（正数显示）
+    by_category: list             # 分类汇总，每项是 [分类名, 笔数, 净金额（负=支出，正=收入）]
 
 
 # ============================================================
@@ -37,6 +40,18 @@ class Summary:                    # 汇总报告
 # 做法：读第一行的列名，逐个检查必须有的列是否都在
 # ============================================================
 
+REQUIRED_COLUMNS = {
+    "Transaction Date", "Post Date", "Description", "Category", "Type", "Amount", "Memo"
+}
+
+def validate_format(fieldnames):
+    if fieldnames is None:
+        print("错误：CSV 文件没有列名。")
+        sys.exit(1)
+    missing = REQUIRED_COLUMNS - set(fieldnames)
+    if missing:
+        print("错误：CSV 格式不对，缺少列：" + str(missing))
+        sys.exit(1)
 
 
 # ============================================================
@@ -50,6 +65,7 @@ def parse(file_path):
         reader = csv.DictReader(f)
         # DictReader 让每行变成字典，列名是键
         # {"Transaction Date": "01/05/2024", "Amount": "-85.32", ...}
+        validate_format(reader.fieldnames)
         rows = list(reader)         # 一次性读完所有行，存成列表
 
     return _parse_credit_card(rows)
@@ -77,11 +93,13 @@ def _parse_credit_card(rows):
             date=datetime.strptime(row["Transaction Date"].strip(), "%m/%d/%Y").date(),
             # strptime 把文字解析成日期，"%m/%d/%Y" 是格式：月/日/年
             # "01/05/2024" → 2024年1月5日，.date() 去掉时分秒
+            post_date=datetime.strptime(row["Post Date"].strip(), "%m/%d/%Y").date(),
             description=row["Description"].strip(),
             category=row.get("Category", "").strip() or "Uncategorized",
             # 分类为空时用 "Uncategorized" 代替
             amount=amount,
             tx_type=row.get("Type", "").strip(),
+            memo=row.get("Memo", "").strip(),
         )
         transactions.append(t)      # 加到列表末尾
 
@@ -100,44 +118,43 @@ def summarize(transactions):
         print("错误：文件里没有找到任何交易记录。")
         sys.exit(1)
 
+    # 负数是支出，取反后求和得总支出；浮点数累加有误差，round 保留两位小数
     total_spending = round(sum(-t.amount for t in transactions if t.amount < 0), 2)
+    # 正数是还款或 statement credit，直接求和
+    total_credits = round(sum(t.amount for t in transactions if t.amount > 0), 2)
     by_category = _group_by_category(transactions)
 
     return Summary(
         total_transactions=len(transactions),
         total_spending=total_spending,
+        total_credits=total_credits,
         by_category=by_category,
     )
 
 
 def _group_by_category(transactions):
 
-    totals = {}     # key = 分类名，value = 总支出金额（正数）
+    totals = {}     # key = 分类名，value = 净金额（负=支出，正=收入/还款）
     counts = {}     # key = 分类名，value = 笔数
 
     for t in transactions:
-        if t.amount >= 0:
-            continue                    # 跳过收入和还款，只统计支出
-
         cat = t.category
 
         if cat not in totals:
             totals[cat] = 0.0
             counts[cat] = 0
 
-        totals[cat] += -t.amount        # 取反，把负数变正数存进去
+        totals[cat] += t.amount     # 保留符号：负=支出，正=收入/还款
         counts[cat] += 1
 
-    # 把字典整理成列表，每项是 [分类名, 笔数, 总金额]
+    # 把字典整理成列表，每项是 [分类名, 笔数, 净金额]
     result = []
     for cat in totals:
+        # 浮点数累加有误差（如 0.1+0.2=0.30000000000000004），round 保留两位小数
         result.append([cat, counts[cat], round(totals[cat], 2)])
 
-    # 按总金额从大到小排序
-    for i in range(len(result)):
-        for j in range(i + 1, len(result)):
-            if result[j][2] > result[i][2]:
-                result[i], result[j] = result[j], result[i]
+    # 按净金额升序排序：负数最多（支出最大）的分类排在最前面
+    result.sort(key=lambda x: x[2])
 
     return result
 
@@ -153,11 +170,14 @@ def write_summary(summary, output_path):
     rows.append(["CHASE TRANSACTION SUMMARY"])
     rows.append(["Total Transactions", summary.total_transactions])
     rows.append(["Total Spending", "-$" + str(summary.total_spending)])
+    rows.append(["Total Credits", "+$" + str(summary.total_credits)])
     rows.append([])
 
-    rows.append(["Category", "Count", "Total Spent"])
+    rows.append(["Category", "Count", "Net Amount"])
     for item in summary.by_category:
-        rows.append([item[0], item[1], "$" + str(item[2])])
+        net = item[2]
+        amount_str = ("-$" + str(abs(net))) if net < 0 else ("+$" + str(net))
+        rows.append([item[0], item[1], amount_str])
 
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         # "w" 模式：写入文件，不存在则新建，已存在则覆盖
@@ -222,7 +242,8 @@ def main():
     print()
     print("汇总已保存到：" + str(output_path))
     print("总笔数：  " + str(summary.total_transactions))
-    print("总支出：  $" + str(summary.total_spending))
+    print("总支出：  -$" + str(summary.total_spending))
+    print("总收入：  +$" + str(summary.total_credits))
 
 
 if __name__ == "__main__":
