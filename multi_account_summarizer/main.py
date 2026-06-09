@@ -83,6 +83,20 @@ def parse_all_files(csv_files):
             print("警告：无法识别文件格式，跳过：" + filename)
             continue   # 跳过这个文件，继续处理下一个
 
+        # 如果文件名不符合 AccountName_Last4.csv 格式（last4 不是数字），
+        # 暂停并询问用户提供正确的账户信息
+        if not last4.isdigit():
+            print("\n⚠️  文件名不符合格式（需要：AccountName_Last4.csv）：" + filename)
+            user_name = input("请输入此账户的名称（直接按 Enter 使用 \"" + account_name + "\"）：").strip()
+            user_last4 = input("请输入卡号/账户后4位（直接按 Enter 使用 \"0000\"）：").strip()
+            if user_name:
+                account_name = user_name
+            if user_last4.isdigit():
+                last4 = user_last4
+            else:
+                last4 = "0000"
+            print()
+
         # 打印当前正在处理的文件，让用户看到进度
         # 例：正在读取：Chase_CC_9809.csv（chase_cc）
         print("正在读取：" + filename + "（" + account_type + "）")
