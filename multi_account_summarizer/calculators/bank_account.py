@@ -25,21 +25,25 @@ def _is_transfer(t):
 def _is_cc_payment(t):
     # 判断一笔银行交易是否是信用卡还款（从银行账户付给信用卡）
     # 这类交易不算真实支出，因为实际消费已经记录在信用卡账单里
-    # 例："CHASE CREDIT CRD EPAY"          → True
-    #     "CITI CARD ONLINE PAYMENT"        → True
-    #     "AMERICAN EXPRESS ACH PMT"        → True
-    #     "BANK OF AMERICA PAYMENT"         → True
-    #     "AMAZON CORP SYF PAYMNT"          → True（Synchrony Financial）
-    #     "REGIONS MORTGAGE MORT PMT"       → False（房贷还款，是真实支出）
+    # 例："CHASE CREDIT CRD EPAY"                → True（Chase 信用卡还款）
+    #     "CITI CARD ONLINE PAYMENT"             → True（Citi 在线还款）
+    #     "AMERICAN EXPRESS ACH PMT"             → True（Amex 还款）
+    #     "BANK OF AMERICA  PAYMENT 18c5rjieb"  → True（BofA 信用卡还款，同时含 BANK OF AMERICA 和 PAYMENT）
+    #     "AMAZON CORP SYF PAYMNT"               → True（Synchrony Financial）
+    #     "ONLINE TRANSFER TO BANK OF AMERICA"  → False（转账，被 _is_transfer 先捕获）
+    #     "REGIONS MORTGAGE MORT PMT"            → False（房贷还款，是真实支出）
     desc = t.description.upper()
     return (
-        "CREDIT CRD"          in desc or   # Chase 信用卡还款
+        "CREDIT CRD"          in desc or   # 例："CHASE CREDIT CRD EPAY"
         "CREDIT CARD"         in desc or
-        "EPAY"                in desc or   # 电子还款，例："CHASE CREDIT CRD EPAY"
-        "CARD ONLINE PAYMENT" in desc or   # Citi 在线还款
-        "SYF PAYMNT"          in desc or   # Synchrony Financial（Amazon 卡等）
+        "EPAY"                in desc or   # 电子还款
+        "CARD ONLINE PAYMENT" in desc or   # 例："CITI CARD ONLINE PAYMENT"
+        "SYF PAYMNT"          in desc or   # Synchrony Financial，例："AMAZON CORP SYF PAYMNT"
         "AMERICAN EXPRESS"    in desc or   # Amex 还款
-        "AMEX"                in desc      # Amex 缩写
+        "AMEX"                in desc or   # Amex 缩写
+        # BofA：必须同时包含 "BANK OF AMERICA" 和 "PAYMENT"，
+        # 避免把转账到 BofA 账户误判为信用卡还款
+        ("BANK OF AMERICA" in desc and "PAYMENT" in desc)
     )
 
 
