@@ -66,44 +66,42 @@ def _group_by_card(transactions):
 def _group_by_category(transactions):
     # 按消费分类分组，统计所有信用卡合并后各分类的支出金额和笔数
 
-    # 两个字典，key 都是分类名称（category），value 分别存金额和笔数
-    category_amount = {}   # key = 分类名, value = 该分类净金额（支出为负）
-    category_count  = {}   # key = 分类名, value = 该分类交易笔数
+    # 三个字典，key 都是分类名称（category）
+    category_spending = {}   # key = 分类名, value = 该分类支出总额（负数累加）
+    category_credits  = {}   # key = 分类名, value = 该分类还款总额（正数累加）
+    category_count    = {}   # key = 分类名, value = 该分类交易笔数
 
-    # 遍历每一笔交易，按分类累加
     for t in transactions:
-
-        # 取这笔交易的消费分类
-        # 例：t.category = "Groceries"、"Dining"、"Uncategorized"
         cat = t.category
 
-        # 如果这个分类第一次出现，先初始化
-        if cat not in category_amount:
-            category_amount[cat] = 0.0
-            category_count[cat]  = 0
+        if cat not in category_spending:
+            category_spending[cat] = 0.0
+            category_credits[cat]  = 0.0
+            category_count[cat]    = 0
 
-        # 累加金额（正负都加，得到净额）和笔数
-        # 例：两笔 Groceries 交易 -52.3 和 -30.0 → 合计 -82.3，共 2 笔
-        category_amount[cat] = category_amount[cat] + t.amount
-        category_count[cat]  = category_count[cat] + 1
+        # 支出和还款分开累加，和顶部 total_spending / total_credits 逻辑一致
+        if t.amount < 0:
+            category_spending[cat] = category_spending[cat] + t.amount
+        else:
+            category_credits[cat]  = category_credits[cat] + t.amount
 
-    # 把字典整理成列表，每个元素代表一个分类的汇总
+        category_count[cat] = category_count[cat] + 1
+
     result = []
-    for cat in category_amount:
+    for cat in category_spending:
         one_category = {
-            "category": cat,                              # 例："Groceries"
-            "count":    category_count[cat],              # 例：2（共2笔）
-            "amount":   round(category_amount[cat], 2),   # 例：-82.3
+            "category": cat,
+            "count":    category_count[cat],
+            "spending": round(category_spending[cat], 2),   # 例：-82.3
+            "credits":  round(category_credits[cat],  2),   # 例：0.0 或 25.0
         }
         result.append(one_category)
 
-    # 定义一个函数，告诉 sort 用每个分类的 amount 值作为排序依据
-    def get_amount(x):
-        return x["amount"]
+    # 按支出从多到少排序
+    def get_spending(x):
+        return x["spending"]
 
-    # 按金额升序排序（amount 是负数，最小的即支出最多的排在最前面）
-    # 例：amount -820.5（餐饮）排在 -82.3（超市）前面
-    result.sort(key=get_amount)
+    result.sort(key=get_spending)
 
     return result
 

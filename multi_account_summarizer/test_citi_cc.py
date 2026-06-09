@@ -87,8 +87,8 @@ class TestCitiCCParse(unittest.TestCase):
         self.assertAlmostEqual(txs[0].amount, -85.32)
 
     def test_credit_stored_as_positive(self):
-        # Credit 有值 = 还款/退款，parser 保持正数
-        txs = self._parse([make_citi_row(debit="", credit="200.00")])
+        # 真实 Citi CSV 里 Credit 列是负数（例：-200.00），parser 取反后变成正数
+        txs = self._parse([make_citi_row(debit="", credit="-200.00")])
         self.assertEqual(len(txs), 1)
         self.assertAlmostEqual(txs[0].amount, 200.00)
 
@@ -125,7 +125,7 @@ class TestCitiCCParse(unittest.TestCase):
     def test_multiple_transactions_in_order(self):
         rows = [
             make_citi_row(tx_date="01/05/2024", debit="30.00",  credit=""),
-            make_citi_row(tx_date="01/10/2024", debit="",       credit="500.00"),
+            make_citi_row(tx_date="01/10/2024", debit="",       credit="-500.00"),
             make_citi_row(tx_date="01/20/2024", debit="120.00", credit=""),
         ]
         txs = self._parse(rows)
@@ -163,7 +163,7 @@ class TestCitiCCParse(unittest.TestCase):
             make_citi_row(tx_date="01/05/2024", debit="30.00",  credit=""),
             make_citi_row(tx_date="bad-date",   debit="50.00",  credit=""),
             make_citi_row(tx_date="01/15/2024", debit="",       credit=""),
-            make_citi_row(tx_date="01/20/2024", debit="",       credit="500.00"),
+            make_citi_row(tx_date="01/20/2024", debit="",       credit="-500.00"),
         ]
         txs = self._parse(rows)
         self.assertEqual(len(txs), 2)
@@ -195,7 +195,8 @@ class TestCitiCostcoParse(unittest.TestCase):
         self.assertAlmostEqual(txs[0].amount, -100.00)
 
     def test_credit_stored_as_positive(self):
-        txs = self._parse([make_citi_costco_row(debit="", credit="300.00")])
+        # 真实 Citi CSV 里 Credit 列是负数（例：-300.00），parser 取反后变成正数
+        txs = self._parse([make_citi_costco_row(debit="", credit="-300.00")])
         self.assertEqual(len(txs), 1)
         self.assertAlmostEqual(txs[0].amount, 300.00)
 

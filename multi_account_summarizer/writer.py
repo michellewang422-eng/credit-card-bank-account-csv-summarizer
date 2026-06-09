@@ -82,16 +82,14 @@ def _write_table1(rows, cc_summary):
 
     # 按消费分类分组的小节（所有信用卡合并统计）
     rows.append(["-- Group by Category (All Cards Combined) --"])
-    rows.append(["Category", "Transaction Count", "Amount"])   # 列标题
+    rows.append(["Category", "Transaction Count", "Spending", "Credits"])   # 列标题
 
-    # 遍历每个分类的汇总数据，每个分类写一行
-    # 例：["Groceries", 5, "-$243.80"]
-    #     ["Dining",    8, "-$320.40"]
     for cat in cc_summary["by_category"]:
         cat_row = [
-            cat["category"],                  # 例："Groceries"
-            cat["count"],                     # 例：5
-            _format_amount(cat["amount"]),    # 例："-$243.80"（支出为负）
+            cat["category"],
+            cat["count"],
+            _format_spending(cat["spending"]),   # 例："-$243.80"
+            _format_credits(cat["credits"]),     # 例："+$0.0" 或 "+$25.0"
         ]
         rows.append(cat_row)
 
@@ -102,60 +100,84 @@ def _write_table1(rows, cc_summary):
 def _write_table2(rows, bank_summary):
     # ── 表格2：Overall Bank Accounts Summary ──────────────────
 
-    # 表格标题行
+    net_cash_flow = round(bank_summary["total_income"] - bank_summary["total_spending"], 2)
+
     rows.append(["TABLE 2: OVERALL BANK ACCOUNTS SUMMARY (UP TO DATE)"])
+    rows.append(["Total Bank Accounts", bank_summary["total_accounts"]])
+    rows.append([])
 
-    # 整体汇总三行：账户数、总支出、总收入
-    # 例：["Total Bank Accounts", 2]
-    #     ["Total Spending (All Accounts)", "-$820.30"]
-    #     ["Total Income (All Accounts)",   "+$3500.00"]
-    rows.append(["Total Bank Accounts",            bank_summary["total_accounts"]])
-    rows.append(["Total Spending (All Accounts)",  _format_spending(bank_summary["total_spending"])])
-    rows.append(["Total Income (All Accounts)",    _format_credits(bank_summary["total_income"])])
-    rows.append([])   # 空行
+    # 真实收支区（不含 transfer）
+    rows.append(["-- Real Transactions (Transfers & CC Payments Excluded) --"])
+    rows.append(["Total Spending",     _format_spending(bank_summary["total_spending"])])
+    rows.append(["Total Income",       _format_credits(bank_summary["total_income"])])
+    rows.append(["Net Cash Flow",      _format_amount(net_cash_flow)])
+    rows.append([])
 
-    # 按银行名称分组的小节
+    rows.append(["-- Credit Card Payments (Paid from Bank to Credit Cards) --"])
+    rows.append(["Total CC Payments",  _format_spending(bank_summary["total_cc_payments"])])
+    rows.append([])
+
+    rows.append(["-- Transfers Between Accounts --"])
+    rows.append(["Transfer Out",       _format_spending(bank_summary["total_transfer_out"])])
+    rows.append(["Transfer In",        _format_credits(bank_summary["total_transfer_in"])])
+    rows.append([])
+
     rows.append(["-- Group by Bank Name --"])
-    rows.append(["Bank Name", "Ending Balance", "Total Spending", "Total Income"])   # 列标题
+    rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
 
-    # 遍历每家银行的汇总数据，每家银行写一行
-    # 例：["Chase Checking", "+$3500.00", "-$820.30", "+$3500.00"]
     for bank in bank_summary["by_bank"]:
-        bank_row = [
-            bank["name"],                          # 例："Chase Checking"
-            "+$" + str(bank["ending_balance"]),    # 例："+$3500.0"（期末余额直接拼字符串）
-            _format_spending(bank["spending"]),    # 例："-$820.30"
-            _format_credits(bank["income"]),       # 例："+$3500.00"
-        ]
-        rows.append(bank_row)
+        bank_net = round(bank["income"] - bank["spending"], 2)
+        rows.append([
+            bank["name"],
+            "+$" + str(bank["ending_balance"]),
+            _format_spending(bank["spending"]),
+            _format_credits(bank["income"]),
+            _format_amount(bank_net),
+            _format_spending(bank["cc_payments"]),
+            _format_spending(bank["transfer_out"]),
+            _format_credits(bank["transfer_in"]),
+        ])
 
-    rows.append([])   # 空行
+    rows.append([])
 
-    # 按账户后四位分组的小节
-    rows.append(["-- Group by Account (Last 4 Digits) --"])
-    rows.append(["Account", "Category", "Transaction Count", "Amount"])   # 列标题
+    rows.append(["-- Real Transactions by Account --"])
+    rows.append(["Account", "Count", "Spending", "Income"])
 
-    # 遍历每个账户，每个账户下可能有多个分类（银行账户目前只有 "Transaction" 一类）
     for account in bank_summary["by_account"]:
-        # 生成账户显示标签
-        # 有后四位：→ "****6789 (Chase Checking)"
-        # 无后四位：→ "Chase Checking"
-        label        = _format_account_label(account["last4"], account["account_name"])
-        account_name = account["account_name"]
-
-        # 遍历这个账户的每个分类，每个分类写一行
-        # 例：["****6789 (Chase Checking)", "Transaction", 25, "+$1117.70"]
+        label = _format_account_label(account["last4"], account["account_name"])
         for cat in account["categories"]:
-            account_row = [
-                label,   # 例："****6789 (Chase Checking)" 或 "Chase Checking"
-                cat["category"],                      # 例："Transaction"
-                cat["count"],                         # 例：25
-                _format_amount(cat["amount"]),        # 例："+$1117.70"（净额可正可负）
-            ]
-            rows.append(account_row)
+            if cat["category"] == "Transaction":
+                rows.append([label, cat["count"],
+                             _format_spending(cat["spending"]),
+                             _format_credits(cat["income"])])
 
-    rows.append([])   # 空行
-    rows.append([])   # 额外空行，与下一张表格拉开距离
+    rows.append([])
+
+    rows.append(["-- Credit Card Payments by Account --"])
+    rows.append(["Account", "Count", "CC Payments"])
+
+    for account in bank_summary["by_account"]:
+        label = _format_account_label(account["last4"], account["account_name"])
+        for cat in account["categories"]:
+            if cat["category"] == "CC Payment":
+                rows.append([label, cat["count"],
+                             _format_spending(cat["spending"])])
+
+    rows.append([])
+
+    rows.append(["-- Transfers by Account --"])
+    rows.append(["Account", "Count", "Transfer Out", "Transfer In"])
+
+    for account in bank_summary["by_account"]:
+        label = _format_account_label(account["last4"], account["account_name"])
+        for cat in account["categories"]:
+            if cat["category"] == "Transfer":
+                rows.append([label, cat["count"],
+                             _format_spending(cat["spending"]),
+                             _format_credits(cat["income"])])
+
+    rows.append([])
+    rows.append([])
 
 
 def _write_table3(rows, monthly_cc):
@@ -200,15 +222,14 @@ def _write_table3(rows, monthly_cc):
 
         # 这个月按消费分类分组
         rows.append(["-- Group by Category --"])
-        rows.append(["Category", "Transaction Count", "Amount"])
+        rows.append(["Category", "Transaction Count", "Spending", "Credits"])
 
-        # 遍历这个月每个分类的数据，每个分类写一行
-        # 例：["Groceries", 2, "-$98.50"]
         for cat in month_data["by_category"]:
             rows.append([
                 cat["category"],
                 cat["count"],
-                _format_amount(cat["amount"]),
+                _format_spending(cat["spending"]),
+                _format_credits(cat["credits"]),
             ])
 
         rows.append([])   # 每个月结束后加空行，与下一个月分隔
@@ -234,48 +255,81 @@ def _write_table4(rows, monthly_bank):
         # 例：["Month: 2025-05"]
         #     ["Total Spending", "-$820.30"]
         #     ["Total Income",   "+$3500.00"]
+        net_cash_flow = round(month_data["total_income"] - month_data["total_spending"], 2)
+
         rows.append(["Month: " + month])
-        rows.append(["Total Spending", _format_spending(month_data["total_spending"])])
-        rows.append(["Total Income",   _format_credits(month_data["total_income"])])
-        rows.append([])   # 空行
+        rows.append([])
 
-        # 这个月按银行名称分组
+        rows.append(["-- Real Transactions (Transfers & CC Payments Excluded) --"])
+        rows.append(["Total Spending",    _format_spending(month_data["total_spending"])])
+        rows.append(["Total Income",      _format_credits(month_data["total_income"])])
+        rows.append(["Net Cash Flow",     _format_amount(net_cash_flow)])
+        rows.append([])
+
+        rows.append(["-- Credit Card Payments --"])
+        rows.append(["Total CC Payments", _format_spending(month_data["total_cc_payments"])])
+        rows.append([])
+
+        rows.append(["-- Transfers Between Accounts --"])
+        rows.append(["Transfer Out",      _format_spending(month_data["total_transfer_out"])])
+        rows.append(["Transfer In",       _format_credits(month_data["total_transfer_in"])])
+        rows.append([])
+
         rows.append(["-- Group by Bank Name --"])
-        rows.append(["Bank Name", "Ending Balance", "Total Spending", "Total Income"])
+        rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
 
-        # 遍历这个月每家银行的数据，每家银行写一行
-        # 例：["Chase Checking", "+$3500.0", "-$820.30", "+$3500.00"]
         for bank in month_data["by_bank"]:
+            bank_net = round(bank["income"] - bank["spending"], 2)
             rows.append([
                 bank["name"],
                 "+$" + str(bank["ending_balance"]),
                 _format_spending(bank["spending"]),
                 _format_credits(bank["income"]),
+                _format_amount(bank_net),
+                _format_spending(bank["cc_payments"]),
+                _format_spending(bank["transfer_out"]),
+                _format_credits(bank["transfer_in"]),
             ])
 
-        rows.append([])   # 空行
+        rows.append([])
 
-        # 这个月按账户后四位分组
-        rows.append(["-- Group by Account (Last 4 Digits) --"])
-        rows.append(["Account", "Category", "Transaction Count", "Amount"])
+        rows.append(["-- Real Transactions by Account --"])
+        rows.append(["Account", "Count", "Spending", "Income"])
 
-        # 遍历这个月每个账户，每个账户下再遍历分类
         for account in month_data["by_account"]:
-            # 生成账户显示标签
-            # 有后四位：→ "****6789 (Chase Checking)"
-            # 无后四位：→ "Chase Checking"
-            label        = _format_account_label(account["last4"], account["account_name"])
-            account_name = account["account_name"]
-
+            label = _format_account_label(account["last4"], account["account_name"])
             for cat in account["categories"]:
-                rows.append([
-                    label,   # 例："****6789 (Chase Checking)" 或 "Chase Checking"
-                    cat["category"],
-                    cat["count"],
-                    _format_amount(cat["amount"]),
-                ])
+                if cat["category"] == "Transaction":
+                    rows.append([label, cat["count"],
+                                 _format_spending(cat["spending"]),
+                                 _format_credits(cat["income"])])
 
-        rows.append([])   # 每个月结束后加空行
+        rows.append([])
+
+        rows.append(["-- Credit Card Payments by Account --"])
+        rows.append(["Account", "Count", "CC Payments"])
+
+        for account in month_data["by_account"]:
+            label = _format_account_label(account["last4"], account["account_name"])
+            for cat in account["categories"]:
+                if cat["category"] == "CC Payment":
+                    rows.append([label, cat["count"],
+                                 _format_spending(cat["spending"])])
+
+        rows.append([])
+
+        rows.append(["-- Transfers by Account --"])
+        rows.append(["Account", "Count", "Transfer Out", "Transfer In"])
+
+        for account in month_data["by_account"]:
+            label = _format_account_label(account["last4"], account["account_name"])
+            for cat in account["categories"]:
+                if cat["category"] == "Transfer":
+                    rows.append([label, cat["count"],
+                                 _format_spending(cat["spending"]),
+                                 _format_credits(cat["income"])])
+
+        rows.append([])
 
     rows.append([])   # 表格结束后额外加一行
 

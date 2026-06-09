@@ -5,6 +5,44 @@
 # ============================================================
 
 
+def _is_transfer(t):
+    # 判断一笔交易是否是账户间转账
+    # 例："ONLINE TRANSFER TO XXXXXX6631"        → True
+    #     "First Tech Feder... One-Time Transf"  → True（截断的 Transfer）
+    #     "WT 260212... CHINA CITIC BANK"         → True（Wire Transfer）
+    #     "WIRE TRANS SVC CHARGE"                → True（Wire 手续费）
+    #     "STARBUCKS #123"                       → False
+    desc = t.description.upper()
+    return (
+        "TRANSFER" in desc or
+        "TRANSF"   in desc or   # 截断的 Transfer，例："One-Time Transf"
+        "XFER"     in desc or
+        "WIRE"     in desc or   # Wire transfer，例："WIRE TRANS SVC CHARGE"
+        "WT "      in desc      # Wire transfer 前缀，例："WT 260212-180938..."
+    )
+
+
+def _is_cc_payment(t):
+    # 判断一笔银行交易是否是信用卡还款（从银行账户付给信用卡）
+    # 这类交易不算真实支出，因为实际消费已经记录在信用卡账单里
+    # 例："CHASE CREDIT CRD EPAY"          → True
+    #     "CITI CARD ONLINE PAYMENT"        → True
+    #     "AMERICAN EXPRESS ACH PMT"        → True
+    #     "BANK OF AMERICA PAYMENT"         → True
+    #     "AMAZON CORP SYF PAYMNT"          → True（Synchrony Financial）
+    #     "REGIONS MORTGAGE MORT PMT"       → False（房贷还款，是真实支出）
+    desc = t.description.upper()
+    return (
+        "CREDIT CRD"          in desc or   # Chase 信用卡还款
+        "CREDIT CARD"         in desc or
+        "EPAY"                in desc or   # 电子还款，例："CHASE CREDIT CRD EPAY"
+        "CARD ONLINE PAYMENT" in desc or   # Citi 在线还款
+        "SYF PAYMNT"          in desc or   # Synchrony Financial（Amazon 卡等）
+        "AMERICAN EXPRESS"    in desc or   # Amex 还款
+        "AMEX"                in desc      # Amex 缩写
+    )
+
+
 def _get_ending_balance(transactions, account_last4):
     # 取某个账户（后4位）最后一笔交易的 balance，作为 ending balance
     # 思路：先筛出这个账户的所有交易 → 按日期排序 → 取最后一笔的 balance
@@ -40,34 +78,38 @@ def _get_ending_balance(transactions, account_last4):
 def _group_by_bank(transactions):
     # 按银行名称分组，统计每家银行的 ending balance、支出、收入
 
-    # 三个字典，key 都是银行名称（account_name），value 分别存不同数据
-    bank_spending = {}   # key = bank name, value = 支出总额（负数累加）
-    bank_income   = {}   # key = bank name, value = 收入总额（正数累加）
-    bank_last4s   = {}   # key = bank name, value = 这家银行所有账户后4位的集合
+    bank_spending      = {}   # 真实支出（排除 transfer 和信用卡还款）
+    bank_income        = {}   # 真实收入（排除 transfer）
+    bank_transfer_out  = {}   # 转出金额
+    bank_transfer_in   = {}   # 转入金额
+    bank_cc_payments   = {}   # 信用卡还款金额（负数）
+    bank_last4s        = {}
 
-    # 遍历每一笔交易，按银行名分组累加
     for t in transactions:
-
-        # 取这笔交易的银行名称
-        # 例：t.account_name = "Chase Checking"
         name = t.account_name
 
-        # 如果这家银行第一次出现，先初始化它的三个字典条目
         if name not in bank_spending:
-            bank_spending[name] = 0.0    # 支出从 0 开始累加
-            bank_income[name]   = 0.0    # 收入从 0 开始累加
-            bank_last4s[name]   = set()  # 用集合存账户后4位，自动去重（同一账户不重复）
+            bank_spending[name]     = 0.0
+            bank_income[name]       = 0.0
+            bank_transfer_out[name] = 0.0
+            bank_transfer_in[name]  = 0.0
+            bank_cc_payments[name]  = 0.0
+            bank_last4s[name]       = set()
 
-        # 根据金额正负判断是支出还是收入，分别累加
-        # 例：t.amount = -52.30 → 支出，累加到 bank_spending
-        #     t.amount = 1200.0 → 收入，累加到 bank_income
-        if t.amount < 0:
-            bank_spending[name] = bank_spending[name] + t.amount
+        if _is_transfer(t):
+            if t.amount < 0:
+                bank_transfer_out[name] = bank_transfer_out[name] + t.amount
+            else:
+                bank_transfer_in[name]  = bank_transfer_in[name] + t.amount
+        elif _is_cc_payment(t):
+            # 信用卡还款单独累加，不计入真实支出
+            bank_cc_payments[name] = bank_cc_payments[name] + t.amount
         else:
-            bank_income[name]   = bank_income[name] + t.amount
+            if t.amount < 0:
+                bank_spending[name] = bank_spending[name] + t.amount
+            else:
+                bank_income[name]   = bank_income[name] + t.amount
 
-        # 把这笔交易的账户后4位加入集合（集合自动去重，同一账户多笔交易只记录一次）
-        # 例：bank_last4s["Chase"] = {"1234", "5678"}（Chase 名下有两个账户）
         bank_last4s[name].add(t.account_last4)
 
     # 把上面三个字典整理成一个列表，每个元素代表一家银行
@@ -85,9 +127,12 @@ def _group_by_bank(transactions):
         # round(..., 2) 保留两位小数，避免浮点误差（例：-52.300000000001 → -52.3）
         one_bank = {
             "name":           name,
-            "ending_balance": round(total_ending_balance, 2),  # 例：4300.0
-            "spending":       round(bank_spending[name], 2),    # 例：-1230.5
-            "income":         round(bank_income[name],   2),    # 例：3500.0
+            "ending_balance": round(total_ending_balance,      2),
+            "spending":       round(bank_spending[name],       2),
+            "income":         round(bank_income[name],         2),
+            "transfer_out":   round(bank_transfer_out[name],   2),
+            "transfer_in":    round(bank_transfer_in[name],    2),
+            "cc_payments":    round(bank_cc_payments[name],    2),
         }
         result.append(one_bank)
 
@@ -130,32 +175,38 @@ def _group_by_account(transactions):
         # 例：account_name = "Chase Checking"
         account_name = account_transactions[0].account_name
 
-        # 两个字典，按分类统计金额和笔数
-        category_amount = {}  # key = 分类名, value = 该分类金额合计
-        category_count  = {}  # key = 分类名, value = 该分类交易笔数
+        category_spending = {}
+        category_income   = {}
+        category_count    = {}
 
         for t in account_transactions:
-            # 银行账户没有消费分类列（不像信用卡有 "Groceries"、"Shopping" 等）
-            # 所以统一用固定字符串 "Transaction" 作为分类名
-            cat = "Transaction"
+            # 三种分类：Transfer（转账）、CC Payment（信用卡还款）、Transaction（真实收支）
+            if _is_transfer(t):
+                cat = "Transfer"
+            elif _is_cc_payment(t):
+                cat = "CC Payment"
+            else:
+                cat = "Transaction"
 
-            # 如果该分类第一次出现，先初始化
-            if cat not in category_amount:
-                category_amount[cat] = 0.0
-                category_count[cat]  = 0
+            if cat not in category_spending:
+                category_spending[cat] = 0.0
+                category_income[cat]   = 0.0
+                category_count[cat]    = 0
 
-            # 累加金额（正负都加，净额）和笔数
-            # 例：三笔交易 -52.3、-30.0、+1200.0 → 合计 1117.7，共 3 笔
-            category_amount[cat] = category_amount[cat] + t.amount
-            category_count[cat]  = category_count[cat] + 1
+            if t.amount < 0:
+                category_spending[cat] = category_spending[cat] + t.amount
+            else:
+                category_income[cat]   = category_income[cat] + t.amount
 
-        # 把分类统计整理成列表（银行账户只有一个分类 "Transaction"，所以列表只有一个元素）
+            category_count[cat] = category_count[cat] + 1
+
         categories = []
-        for cat in category_amount:
+        for cat in category_spending:
             categories.append({
-                "category": cat,                             # 例："Transaction"
-                "count":    category_count[cat],             # 例：25（共25笔）
-                "amount":   round(category_amount[cat], 2),  # 例：1117.7（净额）
+                "category": cat,
+                "count":    category_count[cat],
+                "spending": round(category_spending[cat], 2),  # 例：-82.3
+                "income":   round(category_income[cat],   2),  # 例：1200.0
             })
 
         # 把这个账户的汇总数据打包成字典
@@ -178,36 +229,47 @@ def summarize_overall(transactions):
 
     # 取所有支出交易的金额并取反，变成正数方便求和
     # 例：交易金额 [-52.3, -30.0, 1200.0] → spending_list = [52.3, 30.0]
-    spending_list = []                         # 存放每笔支出的正数金额
-    income_list   = []                         # 存放每笔收入的金额
+    spending_list      = []
+    income_list        = []
+    transfer_out_list  = []
+    transfer_in_list   = []
+    cc_payment_list    = []
+
     for t in transactions:
-        if t.amount < 0:                       # 负数 = 支出/取款
-            spending_list.append(-t.amount)    # 取反变正数，例：-52.3 → 52.3
-        else:                                  # 正数 = 存款/收入
-            income_list.append(t.amount)       # 直接加入，例：1200.0
+        if _is_transfer(t):
+            if t.amount < 0:
+                transfer_out_list.append(-t.amount)
+            else:
+                transfer_in_list.append(t.amount)
+        elif _is_cc_payment(t):
+            cc_payment_list.append(-t.amount)   # 取正数，表示付出去多少
+        else:
+            if t.amount < 0:
+                spending_list.append(-t.amount)
+            else:
+                income_list.append(t.amount)
 
-    # sum() 求和，round(..., 2) 保留两位小数
-    # 例：total_spending = 52.3 + 30.0 = 82.3
-    total_spending = round(sum(spending_list), 2)
-    total_income   = round(sum(income_list),   2)
+    total_spending     = round(sum(spending_list),     2)
+    total_income       = round(sum(income_list),       2)
+    total_transfer_out = round(sum(transfer_out_list), 2)
+    total_transfer_in  = round(sum(transfer_in_list),  2)
+    total_cc_payments  = round(sum(cc_payment_list),   2)
 
-    # 用集合收集所有不同的账户后4位，集合自动去重
-    # 例：交易来自账户 "1234"、"1234"、"5678" → unique_accounts = {"1234", "5678"}
-    unique_accounts = set()                    # 用集合自动去重
+    unique_accounts = set()
     for t in transactions:
-        unique_accounts.add(t.account_last4)   # 例：加入 "1234"、"5678"
+        unique_accounts.add(t.account_last4)
 
-    # 统计共有几个不同的账户
-    # 例：{"1234", "5678"} → total_accounts = 2
-    total_accounts  = len(unique_accounts)
+    total_accounts = len(unique_accounts)
 
-    # 返回整体汇总字典，包含总账户数、总支出、总收入、按银行分组、按账户分组
     return {
-        "total_accounts":  total_accounts,   # 例：2
-        "total_spending":  total_spending,   # 例：82.3
-        "total_income":    total_income,     # 例：1200.0
-        "by_bank":         _group_by_bank(transactions),    # 调用分组函数，得到按银行的汇总列表
-        "by_account":      _group_by_account(transactions), # 调用分组函数，得到按账户的汇总列表
+        "total_accounts":     total_accounts,
+        "total_spending":     total_spending,
+        "total_income":       total_income,
+        "total_transfer_out": total_transfer_out,
+        "total_transfer_in":  total_transfer_in,
+        "total_cc_payments":  total_cc_payments,
+        "by_bank":            _group_by_bank(transactions),
+        "by_account":         _group_by_account(transactions),
     }
 
 
@@ -239,22 +301,35 @@ def summarize_monthly(transactions):
         # 取出这个月的所有交易
         month_transactions = monthly_groups[month_key]
 
-        # 和 summarize_overall 一样，计算这个月的支出列表和收入列表
-        spending_list = []                              # 存放这个月每笔支出的正数金额
-        income_list   = []                              # 存放这个月每笔收入的金额
-        for t in month_transactions:
-            if t.amount < 0:                            # 负数 = 支出/取款
-                spending_list.append(-t.amount)         # 取反变正数，例：-52.3 → 52.3
-            else:                                       # 正数 = 存款/收入
-                income_list.append(t.amount)            # 直接加入，例：1200.0
+        spending_list     = []
+        income_list       = []
+        transfer_out_list = []
+        transfer_in_list  = []
+        cc_payment_list   = []
 
-        # 把这个月的汇总数据打包成字典
+        for t in month_transactions:
+            if _is_transfer(t):
+                if t.amount < 0:
+                    transfer_out_list.append(-t.amount)
+                else:
+                    transfer_in_list.append(t.amount)
+            elif _is_cc_payment(t):
+                cc_payment_list.append(-t.amount)
+            else:
+                if t.amount < 0:
+                    spending_list.append(-t.amount)
+                else:
+                    income_list.append(t.amount)
+
         one_month = {
-            "month":          month_key,                          # 例："2025-05"
-            "total_spending": round(sum(spending_list), 2),       # 例：820.5
-            "total_income":   round(sum(income_list),   2),       # 例：3500.0
-            "by_bank":        _group_by_bank(month_transactions),    # 这个月按银行的分组
-            "by_account":     _group_by_account(month_transactions), # 这个月按账户的分组
+            "month":              month_key,
+            "total_spending":     round(sum(spending_list),     2),
+            "total_income":       round(sum(income_list),       2),
+            "total_transfer_out": round(sum(transfer_out_list), 2),
+            "total_transfer_in":  round(sum(transfer_in_list),  2),
+            "total_cc_payments":  round(sum(cc_payment_list),   2),
+            "by_bank":            _group_by_bank(month_transactions),
+            "by_account":         _group_by_account(month_transactions),
         }
         result.append(one_month)
 
