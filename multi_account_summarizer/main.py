@@ -218,7 +218,7 @@ def main():
         #     银行总支出：    -$820.30
         #     银行总收入：    +$3500.00
         print("银行账户数：    " + str(bank_summary["total_accounts"]))
-        print("银行总支出：    -$" + str(bank_summary["total_spending"]))
+        print("银行总支出：    -$" + str(abs(bank_summary["total_spending"])))
         print("银行总收入：    +$" + str(bank_summary["total_income"]))
 
 

@@ -100,7 +100,7 @@ def _write_table1(rows, cc_summary):
 def _write_table2(rows, bank_summary):
     # ── 表格2：Overall Bank Accounts Summary ──────────────────
 
-    net_cash_flow = round(bank_summary["total_income"] - bank_summary["total_spending"], 2)
+    net_cash_flow = round(bank_summary["total_income"] + bank_summary["total_spending"] + bank_summary["total_cc_payments"], 2)
 
     rows.append(["TABLE 2: OVERALL BANK ACCOUNTS SUMMARY (UP TO DATE)"])
     rows.append(["Total Bank Accounts", bank_summary["total_accounts"]])
@@ -126,7 +126,7 @@ def _write_table2(rows, bank_summary):
     rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
 
     for bank in bank_summary["by_bank"]:
-        bank_net = round(bank["income"] - bank["spending"], 2)
+        bank_net = round(bank["income"] + bank["spending"] + bank["cc_payments"], 2)
         rows.append([
             bank["name"],
             "+$" + str(bank["ending_balance"]),
@@ -255,7 +255,7 @@ def _write_table4(rows, monthly_bank):
         # 例：["Month: 2025-05"]
         #     ["Total Spending", "-$820.30"]
         #     ["Total Income",   "+$3500.00"]
-        net_cash_flow = round(month_data["total_income"] - month_data["total_spending"], 2)
+        net_cash_flow = round(month_data["total_income"] + month_data["total_spending"] + month_data["total_cc_payments"], 2)
 
         rows.append(["Month: " + month])
         rows.append([])
@@ -279,7 +279,7 @@ def _write_table4(rows, monthly_bank):
         rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
 
         for bank in month_data["by_bank"]:
-            bank_net = round(bank["income"] - bank["spending"], 2)
+            bank_net = round(bank["income"] + bank["spending"] + bank["cc_payments"], 2)
             rows.append([
                 bank["name"],
                 "+$" + str(bank["ending_balance"]),

@@ -231,8 +231,7 @@ def summarize_overall(transactions):
     if not transactions:
         return None
 
-    # 取所有支出交易的金额并取反，变成正数方便求和
-    # 例：交易金额 [-52.3, -30.0, 1200.0] → spending_list = [52.3, 30.0]
+    # 所有流出保留负号，流入保留正号，符号统一方便计算
     spending_list      = []
     income_list        = []
     transfer_out_list  = []
@@ -242,22 +241,22 @@ def summarize_overall(transactions):
     for t in transactions:
         if _is_transfer(t):
             if t.amount < 0:
-                transfer_out_list.append(-t.amount)
+                transfer_out_list.append(t.amount)   # 负数，例：-1000.0
             else:
-                transfer_in_list.append(t.amount)
+                transfer_in_list.append(t.amount)    # 正数，例：+1000.0
         elif _is_cc_payment(t):
-            cc_payment_list.append(-t.amount)   # 取正数，表示付出去多少
+            cc_payment_list.append(t.amount)         # 负数，例：-500.0
         else:
             if t.amount < 0:
-                spending_list.append(-t.amount)
+                spending_list.append(t.amount)        # 负数，例：-82.3
             else:
-                income_list.append(t.amount)
+                income_list.append(t.amount)          # 正数，例：1200.0
 
-    total_spending     = round(sum(spending_list),     2)
-    total_income       = round(sum(income_list),       2)
-    total_transfer_out = round(sum(transfer_out_list), 2)
-    total_transfer_in  = round(sum(transfer_in_list),  2)
-    total_cc_payments  = round(sum(cc_payment_list),   2)
+    total_spending     = round(sum(spending_list),     2)   # 负数
+    total_income       = round(sum(income_list),       2)   # 正数
+    total_transfer_out = round(sum(transfer_out_list), 2)   # 负数
+    total_transfer_in  = round(sum(transfer_in_list),  2)   # 正数
+    total_cc_payments  = round(sum(cc_payment_list),   2)   # 负数
 
     unique_accounts = set()
     for t in transactions:
@@ -314,16 +313,16 @@ def summarize_monthly(transactions):
         for t in month_transactions:
             if _is_transfer(t):
                 if t.amount < 0:
-                    transfer_out_list.append(-t.amount)
+                    transfer_out_list.append(t.amount)   # 负数
                 else:
-                    transfer_in_list.append(t.amount)
+                    transfer_in_list.append(t.amount)    # 正数
             elif _is_cc_payment(t):
-                cc_payment_list.append(-t.amount)
+                cc_payment_list.append(t.amount)         # 负数
             else:
                 if t.amount < 0:
-                    spending_list.append(-t.amount)
+                    spending_list.append(t.amount)        # 负数
                 else:
-                    income_list.append(t.amount)
+                    income_list.append(t.amount)          # 正数
 
         one_month = {
             "month":              month_key,
