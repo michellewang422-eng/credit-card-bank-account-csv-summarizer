@@ -123,19 +123,18 @@ def _write_table2(rows, bank_summary):
     rows.append([])
 
     rows.append(["-- Group by Bank Name --"])
-    rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
+    rows.append(["Bank Name", "Net Cash Flow", "Income", "Spending", "CC Payments", "Transfer In", "Transfer Out"])
 
     for bank in bank_summary["by_bank"]:
         bank_net = round(bank["income"] + bank["spending"] + bank["cc_payments"], 2)
         rows.append([
             bank["name"],
-            "+$" + str(bank["ending_balance"]),
-            _format_spending(bank["spending"]),
-            _format_credits(bank["income"]),
             _format_amount(bank_net),
+            _format_credits(bank["income"]),
+            _format_spending(bank["spending"]),
             _format_spending(bank["cc_payments"]),
-            _format_spending(bank["transfer_out"]),
             _format_credits(bank["transfer_in"]),
+            _format_spending(bank["transfer_out"]),
         ])
 
     rows.append([])
@@ -276,19 +275,18 @@ def _write_table4(rows, monthly_bank):
         rows.append([])
 
         rows.append(["-- Group by Bank Name --"])
-        rows.append(["Bank Name", "Ending Balance", "Spending", "Income", "Net Cash Flow", "CC Payments", "Transfer Out", "Transfer In"])
+        rows.append(["Bank Name", "Net Cash Flow", "Income", "Spending", "CC Payments", "Transfer In", "Transfer Out"])
 
         for bank in month_data["by_bank"]:
             bank_net = round(bank["income"] + bank["spending"] + bank["cc_payments"], 2)
             rows.append([
                 bank["name"],
-                "+$" + str(bank["ending_balance"]),
-                _format_spending(bank["spending"]),
-                _format_credits(bank["income"]),
                 _format_amount(bank_net),
+                _format_credits(bank["income"]),
+                _format_spending(bank["spending"]),
                 _format_spending(bank["cc_payments"]),
-                _format_spending(bank["transfer_out"]),
                 _format_credits(bank["transfer_in"]),
+                _format_spending(bank["transfer_out"]),
             ])
 
         rows.append([])
