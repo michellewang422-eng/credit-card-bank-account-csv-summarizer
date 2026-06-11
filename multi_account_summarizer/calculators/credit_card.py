@@ -16,39 +16,30 @@ def _group_by_card(transactions):
     # 遍历每一笔交易，按卡名分组累加
     for t in transactions:
 
-        # 取这笔交易的信用卡名称
-        # 例：t.account_name = "Chase Sapphire"
-        name = t.account_name
+        # 用 "account_name (last4)" 作为唯一 key，区分同名不同卡号的账户
+        # 例：t.account_name = "Chase CC", t.account_last4 = "9809"
+        #     → key = "Chase CC (9809)"
+        key = t.account_name + " (" + t.account_last4 + ")"
 
-        # 如果这张卡第一次出现，先初始化它的三个字典条目
-        if name not in card_spending:
-            card_spending[name] = 0.0   # 支出从 0 开始累加
-            card_credits[name]  = 0.0   # 还款从 0 开始累加
-            card_counts[name]   = 0     # 笔数从 0 开始计数
+        if key not in card_spending:
+            card_spending[key] = 0.0
+            card_credits[key]  = 0.0
+            card_counts[key]   = 0
 
-        # 根据金额正负判断是支出还是还款，分别累加
-        # 例：t.amount = -39.99 → 支出，累加到 card_spending
-        #     t.amount = 200.0  → 还款，累加到 card_credits
         if t.amount < 0:
-            card_spending[name] = card_spending[name] + t.amount
+            card_spending[key] = card_spending[key] + t.amount
         else:
-            card_credits[name]  = card_credits[name] + t.amount
+            card_credits[key]  = card_credits[key] + t.amount
 
-        # 无论支出还是还款，笔数都加 1
-        card_counts[name] = card_counts[name] + 1
+        card_counts[key] = card_counts[key] + 1
 
-    # 把上面三个字典整理成一个列表，每个元素代表一张卡的汇总
     result = []
-    for name in card_spending:
-        # round(..., 2) 保留两位小数，避免浮点误差
-        # 例：card_spending["Chase Sapphire"] = -1230.5
-        #     card_credits["Chase Sapphire"]  = 500.0
-        #     card_counts["Chase Sapphire"]   = 18
+    for key in card_spending:
         one_card = {
-            "name":         name,                            # 例："Chase Sapphire"
-            "transactions": card_counts[name],               # 例：18（共18笔）
-            "spending":     round(card_spending[name], 2),   # 例：-1230.5
-            "credits":      round(card_credits[name],  2),   # 例：500.0
+            "name":         key,                             # 例："Chase CC (9809)"
+            "transactions": card_counts[key],
+            "spending":     round(card_spending[key], 2),
+            "credits":      round(card_credits[key],  2),
         }
         result.append(one_card)
 
@@ -132,7 +123,7 @@ def summarize_overall(transactions):
     #     → unique_cards = {"Chase Sapphire", "Amex Gold"}
     unique_cards = set()
     for t in transactions:
-        unique_cards.add(t.account_name)   # 重复的卡名自动忽略
+        unique_cards.add(t.account_name + " (" + t.account_last4 + ")")
 
     # 统计共有几张不同的信用卡
     # 例：{"Chase Sapphire", "Amex Gold"} → total_cards = 2
