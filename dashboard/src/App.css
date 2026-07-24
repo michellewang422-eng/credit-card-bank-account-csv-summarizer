@@ -33,6 +33,13 @@ nav {
   background: conic-gradient(#4285f4 0 25%, #34a853 25% 50%, #fbbc05 50% 75%, #ea4335 75%);
   border-radius: 50%;
 }
+.google-account { display: flex; align-items: center; gap: 10px; }
+.google-avatar { width: 28px; height: 28px; border-radius: 50%; }
+.google-email { font-size: 0.85rem; color: #2d3436; }
+.google-auth-error {
+  max-width: 1100px; margin: 1rem auto 0; padding: 10px 16px;
+  background: #ffe8e6; color: #d63031; border-radius: 8px; font-size: 0.85rem;
+}
 .btn-primary { background: #00b894; color: #fff; }
 .btn-primary:hover { background: #00a381; }
 .btn-secondary { background: #f0f0f0; color: #2d3436; }

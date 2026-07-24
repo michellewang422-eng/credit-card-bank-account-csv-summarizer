@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import { useGoogleAuth } from './hooks/useGoogleAuth'
 
 const CC_ROWS = [
   { account: 'Chase Sapphire ···4521', spending: '−$980.20',  credits: '+$200.00' },
@@ -75,16 +76,26 @@ function PieChart() {
 
 export default function App() {
   const [openMonth, setOpenMonth] = useState(0)
+  const { profile, error, signIn, signOut, isSignedIn } = useGoogleAuth()
 
   return (
     <>
       <nav>
         <div className="logo">Finance<span>Dashboard</span></div>
-        <button className="btn btn-google">
-          <div className="google-icon"/>
-          Sign in with Google
-        </button>
+        {isSignedIn ? (
+          <div className="google-account">
+            {profile?.picture && <img className="google-avatar" src={profile.picture} alt=""/>}
+            <span className="google-email">{profile?.email}</span>
+            <button className="btn btn-google" onClick={signOut}>Sign out</button>
+          </div>
+        ) : (
+          <button className="btn btn-google" onClick={signIn}>
+            <div className="google-icon"/>
+            Sign in with Google
+          </button>
+        )}
       </nav>
+      {error && <div className="google-auth-error">{error}</div>}
 
       <main>
 
