@@ -1,13 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
-// drive.readonly is requested now so the token already carries the scope
-// PR4/PR5 will need — login itself doesn't call the Drive API yet.
-const SCOPE = 'openid email profile https://www.googleapis.com/auth/drive.readonly'
+// drive.readonly: find/read the user's existing Finance folder & CSVs.
+// drive.file: create the Finance/Bank/CreditCard/Investment skeleton for
+// users who don't have one yet. See project notes §7.1.
+const SCOPE = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
+].join(' ')
+
+// Access tokens from GIS aren't restored on page reload by themselves —
+// persist them (per tab) so a refresh doesn't look like a sign-out.
+const SESSION_KEY = 'googleAuthSession'
+
+function loadSession() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY))
+    if (saved && saved.expiresAt > Date.now()) return saved
+  } catch {
+    // ignore malformed/missing session
+  }
+  sessionStorage.removeItem(SESSION_KEY)
+  return null
+}
+
+function saveSession(session) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+}
 
 export function useGoogleAuth() {
-  const [accessToken, setAccessToken] = useState(null)
-  const [profile, setProfile] = useState(null)
+  const initialSession = loadSession()
+  const [accessToken, setAccessToken] = useState(initialSession?.accessToken ?? null)
+  const [profile, setProfile] = useState(initialSession?.profile ?? null)
   const [error, setError] = useState(null)
   const tokenClientRef = useRef(null)
 
@@ -36,6 +63,11 @@ export function useGoogleAuth() {
               })
               const info = await res.json()
               setProfile(info)
+              saveSession({
+                accessToken: tokenResponse.access_token,
+                profile: info,
+                expiresAt: Date.now() + tokenResponse.expires_in * 1000,
+              })
               console.log('Signed in as', info.email)
             } catch (err) {
               setError(err.message)
@@ -68,6 +100,7 @@ export function useGoogleAuth() {
     }
     setAccessToken(null)
     setProfile(null)
+    sessionStorage.removeItem(SESSION_KEY)
     console.log('Signed out')
   }, [accessToken])
 

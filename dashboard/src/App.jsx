@@ -1,6 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
+import { readCsvFile } from './utils/parseCsv'
+import { findOrCreateFinanceFolder, listFinanceFiles } from './utils/driveApi'
+import { pickFinanceFolder } from './utils/googlePicker'
+
+const FOLDER_STORAGE_KEY = 'financeFolder'
 
 const CC_ROWS = [
   { account: 'Chase Sapphire ···4521', spending: '−$980.20',  credits: '+$200.00' },
@@ -76,7 +81,103 @@ function PieChart() {
 
 export default function App() {
   const [openMonth, setOpenMonth] = useState(0)
-  const { profile, error, signIn, signOut, isSignedIn } = useGoogleAuth()
+  const { accessToken, profile, error, signIn, signOut, isSignedIn } = useGoogleAuth()
+  const fileInputRef = useRef(null)
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [uploadError, setUploadError] = useState(null)
+
+  const [driveFiles, setDriveFiles] = useState([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveError, setDriveError] = useState(null)
+  const [driveFetched, setDriveFetched] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null) // null | 'connect' | 'change'
+  const [financeFolder, setFinanceFolder] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(FOLDER_STORAGE_KEY))
+    } catch {
+      return null
+    }
+  })
+
+  const handleFilesSelected = async (event) => {
+    const files = Array.from(event.target.files)
+    event.target.value = '' // allow re-selecting the same file later
+    if (files.length === 0) return
+
+    setUploadError(null)
+    try {
+      const summaries = await Promise.all(files.map(readCsvFile))
+      setUploadedFiles(prev => [...prev, ...summaries])
+    } catch (err) {
+      setUploadError(err.message)
+    }
+  }
+
+  const fetchDriveFiles = async (folderIdOverride) => {
+    setDriveLoading(true)
+    setDriveError(null)
+    try {
+      const folderId = folderIdOverride || financeFolder?.id || (await findOrCreateFinanceFolder(accessToken))
+      const files = await listFinanceFiles(accessToken, folderId)
+      setDriveFiles(files)
+      setDriveFetched(true)
+    } catch (err) {
+      setDriveError(err.message)
+    } finally {
+      setDriveLoading(false)
+    }
+  }
+
+  const chooseFolder = async (token) => {
+    setDriveError(null)
+    try {
+      const folder = await pickFinanceFolder(token)
+      if (!folder) return
+      localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(folder))
+      setFinanceFolder(folder)
+      fetchDriveFiles(folder.id)
+    } catch (err) {
+      setDriveError(err.message)
+    }
+  }
+
+  // Single Drive entry point: picks a folder the first time, then just
+  // refreshes from the already-chosen folder on subsequent clicks.
+  const connectDrive = () => {
+    if (financeFolder) {
+      fetchDriveFiles()
+    } else {
+      chooseFolder(accessToken)
+    }
+  }
+
+  const handleDriveButtonClick = () => {
+    if (!isSignedIn) {
+      setPendingAction('connect')
+      signIn()
+      return
+    }
+    connectDrive()
+  }
+
+  const handleChangeFolder = () => {
+    if (!isSignedIn) {
+      setPendingAction('change')
+      signIn()
+      return
+    }
+    chooseFolder(accessToken)
+  }
+
+  useEffect(() => {
+    if (isSignedIn && pendingAction) {
+      const action = pendingAction
+      setPendingAction(null)
+      if (action === 'change') chooseFolder(accessToken)
+      else connectDrive()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn, pendingAction])
 
   return (
     <>
@@ -105,9 +206,61 @@ export default function App() {
           <h3>Upload your bank / credit card statements</h3>
           <p>Supports Chase, Amex, Citi, Wells Fargo — CSV format</p>
           <div className="upload-actions">
-            <button className="btn btn-primary">⬆ Upload CSV files</button>
-            <button className="btn btn-secondary">Connect Google Drive</button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              multiple
+              hidden
+              onChange={handleFilesSelected}
+            />
+            <button className="btn btn-primary" onClick={() => fileInputRef.current.click()}>
+              ⬆ Upload CSV files
+            </button>
+            <button className="btn btn-secondary" onClick={handleDriveButtonClick} disabled={driveLoading}>
+              {driveLoading
+                ? 'Connecting…'
+                : financeFolder ? '🔄 Refresh Drive files' : '📁 Connect Google Drive'}
+            </button>
           </div>
+          {financeFolder && (
+            <p className="upload-hint">
+              Finance folder: <strong>{financeFolder.name}</strong>{' '}
+              <button className="link-btn" onClick={handleChangeFolder} disabled={driveLoading}>Change</button>
+            </p>
+          )}
+          {uploadError && <div className="upload-error">{uploadError}</div>}
+          {uploadedFiles.length > 0 && (
+            <ul className="upload-preview-list">
+              {uploadedFiles.map((f, i) => (
+                <li key={`${f.fileName}-${i}`}>
+                  <span className="upload-file-name">{f.fileName}</span>
+                  <span className="upload-file-meta">
+                    {f.rowCount} rows · {f.headers.length} columns
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {driveError && <div className="upload-error">{driveError}</div>}
+          {driveFiles.length > 0 && (
+            <ul className="upload-preview-list">
+              {driveFiles.map(f => (
+                <li key={f.id}>
+                  <span className="upload-file-name">{f.accountType} / {f.institution} / {f.name}</span>
+                  <span className="upload-file-meta">
+                    {new Date(f.modifiedTime).toLocaleDateString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {driveFetched && !driveError && driveFiles.length === 0 && (
+            <p className="upload-hint">
+              Connected — no CSVs found yet. Drop files into your Drive's
+              Finance/Bank (or CreditCard/Investment)/&lt;institution&gt; folders, then Connect again.
+            </p>
+          )}
         </div>
 
         {/* Summary Cards */}
