@@ -31,7 +31,6 @@ jobs:
         working-directory: dashboard
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-          VITE_GOOGLE_API_KEY: ${{ secrets.VITE_GOOGLE_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dashboard/dist

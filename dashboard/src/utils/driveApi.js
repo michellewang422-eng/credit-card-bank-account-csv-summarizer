@@ -26,31 +26,17 @@ async function listChildren(accessToken, folderId) {
   return files
 }
 
-function createFolder(accessToken, name, parentId) {
-  return driveRequest(accessToken, '', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: FOLDER_MIME_TYPE, parents: [parentId] }),
-  })
-}
-
-// Every signed-in user gets their own top-level "Finance" folder — found by
-// name in their Drive root if it already exists, created (with the
-// Bank/CreditCard/Investment skeleton) the first time otherwise.
-export async function findOrCreateFinanceFolder(accessToken) {
+// Every signed-in user is expected to have their own top-level "Finance"
+// folder, set up by hand following the in-app setup guide. Returns null if
+// no such folder exists yet — callers show the setup guide in that case.
+export async function findFinanceFolder(accessToken) {
   const params = new URLSearchParams({
     q: `'root' in parents and mimeType = '${FOLDER_MIME_TYPE}' and name = 'Finance' and trashed = false`,
     fields: 'files(id,name)',
     pageSize: '1',
   })
   const { files } = await driveRequest(accessToken, `?${params}`)
-  if (files.length > 0) return files[0].id
-
-  const financeFolder = await createFolder(accessToken, 'Finance', 'root')
-  await Promise.all(
-    ['Bank', 'CreditCard', 'Investment'].map(name => createFolder(accessToken, name, financeFolder.id))
-  )
-  return financeFolder.id
+  return files.length > 0 ? files[0].id : null
 }
 
 // Finance/<accountType>/<institution>/*.csv — walk two levels of subfolders
