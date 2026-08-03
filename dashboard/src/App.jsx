@@ -132,11 +132,15 @@ function SetupScreen({ reason, driveError, onRefresh }) {
       <p className="setup-sub">
         {reason === 'no-files'
           ? <>We found your <strong>Finance/</strong> folder, but no CSV files inside it yet. Follow these steps to add some.</>
-          : <>We couldn't find a <strong>Finance/</strong> folder in your Google Drive. Follow these steps to set it up — only needed once.</>}
+          : reason === 'error'
+            ? <>We ran into a problem checking your Google Drive. This may be temporary — hit <strong>Refresh</strong> to try again, or follow these steps if you haven't set up your <strong>Finance/</strong> folder yet.</>
+            : <>We couldn't find a <strong>Finance/</strong> folder in your Google Drive. Follow these steps to set it up — only needed once.</>}
       </p>
 
       <div className="notice-box">
-        <strong>{reason === 'no-files' ? '⚠ No CSV files found' : '⚠ Folder not found'}</strong>
+        <strong>
+          {reason === 'no-files' ? '⚠ No CSV files found' : reason === 'error' ? '⚠ Something went wrong' : '⚠ Folder not found'}
+        </strong>
         {driveError
           ? driveError
           : reason === 'no-files'
@@ -352,7 +356,7 @@ export default function App() {
 
   // 'landing' | 'checking' | 'setup' | 'processing' | 'dashboard'
   const [screen, setScreen] = useState(accessToken ? 'checking' : 'landing')
-  const [setupReason, setSetupReason] = useState(null) // 'no-folder' | 'no-files'
+  const [setupReason, setSetupReason] = useState(null) // 'no-folder' | 'no-files' | 'error'
   const [driveFiles, setDriveFiles] = useState([])
   const [driveError, setDriveError] = useState(null)
   const [stageIndex, setStageIndex] = useState(0)
@@ -379,7 +383,7 @@ export default function App() {
       runPipeline()
     } catch (err) {
       setDriveError(err.message)
-      setSetupReason('no-folder')
+      setSetupReason('error')
       setScreen('setup')
     }
   }

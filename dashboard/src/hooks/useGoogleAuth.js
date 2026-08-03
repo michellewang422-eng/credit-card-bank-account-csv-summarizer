@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 // drive.readonly: find/read the user's existing Finance folder & CSVs.
-// drive.file: create the Finance/Bank/CreditCard/Investment skeleton for
-// users who don't have one yet. See project notes §7.1.
+// The app never writes to Drive (missing folders route to an in-app
+// setup guide instead), so no write scope is requested.
 const SCOPE = [
   'openid',
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.file',
 ].join(' ')
 
 // Access tokens from GIS aren't restored on page reload by themselves —
@@ -30,6 +29,8 @@ function loadSession() {
 function saveSession(session) {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
+
+const MAX_INIT_ATTEMPTS = 100 // ~10s at 100ms intervals
 
 export function useGoogleAuth() {
   const initialSession = loadSession()
@@ -74,10 +75,14 @@ export function useGoogleAuth() {
             }
           },
         })
-      } else {
+      } else if (attempts < MAX_INIT_ATTEMPTS) {
+        attempts++
         setTimeout(initWhenReady, 100)
+      } else {
+        setError('Google sign-in failed to load — check your network or ad blocker and reload the page')
       }
     }
+    let attempts = 0
     initWhenReady()
 
     return () => {
@@ -104,5 +109,5 @@ export function useGoogleAuth() {
     console.log('Signed out')
   }, [accessToken])
 
-  return { accessToken, profile, error, signIn, signOut, isSignedIn: !!accessToken }
+  return { accessToken, profile, error, signIn, signOut }
 }
