@@ -22,8 +22,23 @@
 2. User Type 选 **External**（除非你有 Google Workspace 组织账号，一般个人项目选 External）
 3. 填基本信息：App name（比如 "Personal Finance Dashboard"）、User support email、Developer contact email
 4. Scopes 页面：可以先跳过，代码里用到的 scope（`drive.readonly`、`drive.file`、`openid`、`email`、`profile`）会在请求登录时动态申请，不需要在这里预先配置
-5. Test users 页面（如果 App 还在 "Testing" 发布状态）：把你自己的 Google 账号邮箱加进去，否则登录会被拒绝
+5. Test users 页面（如果 App 还在 "Testing" 发布状态）：把你自己的 Google 账号邮箱加进去，否则登录会被拒绝——详细步骤见下面 1.1
 6. 保存
+
+---
+
+## 1.1 添加 Test users（换其他 Google 账号登录失败时看这里）
+
+**背景**：App 在 "Testing" 发布状态下，只有加进 Test users 名单的账号才能登录成功；没加的账号点 "Sign in with Google" 会被拒绝（常见报错：`403 access_denied` 或 "此应用未经验证"）。这个项目用到 `drive.readonly` 属于敏感 scope，未验证的 App 更是必须靠 Test users 名单放行。
+
+1. 打开 https://console.cloud.google.com/auth/overview?project=你的项目ID
+   （Google 把原来的 "OAuth consent screen" 页面重做成了 **"Google Auth Platform"**，左侧菜单包括 Overview / Branding / Audience / Clients / Data Access / Verification Center / Settings）
+2. **确认右上角登录的 Google 账号，是当初创建这个项目 / Client ID 的那个账号。**
+   如果账号不对，页面会显示 "You need additional access"（权限不足），点右上角头像切换到正确账号后重新打开链接
+3. 左侧菜单点 **Audience**（老版本 UI 里这块叫 "OAuth consent screen"，Test users 在同一页）
+4. 找到 **Test users** 区域，点 **"+ ADD USERS"**
+5. 输入想要放行的 Google 账号邮箱（可以一次加多个，逗号或换行分隔），最多 100 个
+6. 点 **SAVE**，保存后立刻生效，不需要重新部署网站——直接用新账号去线上地址重新登录即可
 
 ---
 
