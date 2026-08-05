@@ -362,6 +362,9 @@ export default function App() {
   const [stageIndex, setStageIndex] = useState(0)
   const pipelineTimer = useRef(null)
 
+  // async：这个函式里面有要等待的事（找 Finance 资料夹、找档案都要等 Drive API 回应）。
+  // await：每一行 await 都是「先等这行做完，才做下一行」；中间任何一步失败，
+  // 都会跳进下面的 catch。
   const checkDrive = async (token) => {
     setScreen('checking')
     setDriveError(null)
