@@ -16,6 +16,20 @@ async function driveRequest(accessToken, path, options = {}) {
   return res.json()
 }
 
+// alt=media returns the raw file bytes instead of file metadata — the JSON
+// error-parsing helper above (driveRequest) doesn't fit since a successful
+// response here is plain text, not JSON.
+export async function downloadFileContent(accessToken, fileId) {
+  const res = await fetch(`${DRIVE_FILES_URL}/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error?.message || `Drive API error (${res.status})`)
+  }
+  return res.text()
+}
+
 async function listChildren(accessToken, folderId) {
   const params = new URLSearchParams({
     q: `'${folderId}' in parents and trashed = false`,

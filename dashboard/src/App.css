@@ -240,6 +240,44 @@ tr:hover td { background: #f8f9fa; }
 .btn-refresh:disabled { opacity: 0.6; cursor: default; }
 
 /* ══════════════════════════════
+   FLOW: FILES FOUND / PREVIEW
+══════════════════════════════ */
+.flow-files { max-width: 720px; margin: 0 auto; padding: 2rem 0 3rem; display: flex; flex-direction: column; align-items: center; }
+.files-title { font-size: 1.5rem; font-weight: 800; text-align: center; margin-bottom: 0.4rem; color: #2d3436; }
+.files-title em { color: #00b894; font-style: normal; }
+.files-sub { font-size: 0.88rem; color: #636e72; text-align: center; margin-bottom: 1.75rem; }
+
+.file-groups { width: 100%; display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 2rem; }
+.file-group {
+  background: #fff; border-radius: 12px; padding: 1rem 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.file-group-title {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #636e72; margin-bottom: 0.6rem;
+}
+
+.file-row { border-bottom: 1px solid #f0f0f0; }
+.file-row:last-child { border-bottom: none; }
+.file-row-main {
+  display: flex; align-items: center; gap: 0.75rem; padding: 10px 4px; cursor: pointer;
+}
+.file-row-main:hover { background: #f8f9fa; }
+.file-row-name { font-size: 0.85rem; font-weight: 500; color: #2d3436; flex: 1; }
+.file-row-meta { font-size: 0.75rem; color: #b2bec3; }
+.file-row-chevron { color: #b2bec3; font-size: 0.72rem; width: 14px; text-align: center; }
+
+.csv-preview { padding: 0 4px 12px; }
+.csv-preview-status { padding: 10px 4px; font-size: 0.8rem; color: #636e72; }
+.csv-preview-error { color: #d63031; }
+.csv-preview-body {
+  background: #2d3436; color: #dfe6e9; border-radius: 8px; padding: 12px 14px;
+  font-family: monospace; font-size: 0.72rem; line-height: 1.6;
+  overflow-x: auto; white-space: pre; margin: 0;
+}
+.csv-preview-truncated { font-size: 0.72rem; color: #b2bec3; margin-top: 6px; }
+
+/* ══════════════════════════════
    FLOW: PROCESSING PIPELINE
 ══════════════════════════════ */
 .flow-processing { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
