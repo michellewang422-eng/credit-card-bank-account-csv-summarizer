@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
-import { findFinanceFolder, listFinanceFiles } from './utils/driveApi'
+import { downloadFileContent, findFinanceFolder, listFinanceFiles } from './utils/driveApi'
 
 const CC_ROWS = [
   { account: 'Chase Sapphire ···4521', spending: '−$980.20',  credits: '+$200.00' },
@@ -206,6 +206,82 @@ function SetupScreen({ reason, driveError, onRefresh }) {
   )
 }
 
+function CsvPreview({ accessToken, file }) {
+  const [content, setContent] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    downloadFileContent(accessToken, file.id)
+      .then(text => { if (!cancelled) setContent(text) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [accessToken, file.id])
+
+  if (loading) return <div className="csv-preview-status">Loading preview…</div>
+  if (error) return <div className="csv-preview-status csv-preview-error">Couldn't load file: {error}</div>
+
+  const lines = content.split(/\r\n|\n/)
+  const preview = lines.slice(0, 20)
+  return (
+    <div className="csv-preview">
+      <pre className="csv-preview-body">{preview.join('\n')}</pre>
+      {lines.length > preview.length && (
+        <div className="csv-preview-truncated">Showing first {preview.length} of {lines.length} lines</div>
+      )}
+    </div>
+  )
+}
+
+function FileRow({ accessToken, file }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="file-row">
+      <div className="file-row-main" onClick={() => setExpanded(e => !e)}>
+        <div className="file-row-name">📄 {file.name}</div>
+        <div className="file-row-meta">{new Date(file.modifiedTime).toLocaleDateString()}</div>
+        <div className="file-row-chevron">{expanded ? '▼' : '▶'}</div>
+      </div>
+      {expanded && <CsvPreview accessToken={accessToken} file={file} />}
+    </div>
+  )
+}
+
+function FilesScreen({ accessToken, driveFiles, onContinue }) {
+  const groups = {}
+  for (const file of driveFiles) {
+    const key = `${file.accountType} / ${file.institution}`
+    if (!groups[key]) groups[key] = []
+    groups[key].push(file)
+  }
+
+  return (
+    <div className="flow-files">
+      <h1 className="files-title">Files found in your <em>Finance/</em> folder</h1>
+      <p className="files-sub">
+        {driveFiles.length} CSV file{driveFiles.length === 1 ? '' : 's'} detected. Click a file to preview its raw contents.
+      </p>
+
+      <div className="file-groups">
+        {Object.entries(groups).map(([groupName, files]) => (
+          <div key={groupName} className="file-group">
+            <div className="file-group-title">{groupName}</div>
+            {files.map(file => (
+              <FileRow key={file.id} accessToken={accessToken} file={file} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <button className="btn-refresh" onClick={onContinue}>Continue &amp; build summary →</button>
+    </div>
+  )
+}
+
 function pipeStepClass(state) {
   return state === 'done' ? 'done-step' : state === 'active' ? 'active-step' : 'wait-step'
 }
@@ -354,7 +430,7 @@ export default function App() {
   const { accessToken, profile, error, signIn, signOut } = useGoogleAuth()
   const [openMonth, setOpenMonth] = useState(0)
 
-  // 'landing' | 'checking' | 'setup' | 'processing' | 'dashboard'
+  // 'landing' | 'checking' | 'setup' | 'files' | 'processing' | 'dashboard'
   const [screen, setScreen] = useState(accessToken ? 'checking' : 'landing')
   const [setupReason, setSetupReason] = useState(null) // 'no-folder' | 'no-files' | 'error'
   const [driveFiles, setDriveFiles] = useState([])
@@ -383,7 +459,7 @@ export default function App() {
         return
       }
       setDriveFiles(files)
-      runPipeline()
+      setScreen('files')
     } catch (err) {
       setDriveError(err.message)
       setSetupReason('error')
@@ -443,6 +519,13 @@ export default function App() {
             reason={setupReason}
             driveError={driveError}
             onRefresh={handleRefresh}
+          />
+        )}
+        {screen === 'files' && (
+          <FilesScreen
+            accessToken={accessToken}
+            driveFiles={driveFiles}
+            onContinue={runPipeline}
           />
         )}
         {screen === 'processing' && (
