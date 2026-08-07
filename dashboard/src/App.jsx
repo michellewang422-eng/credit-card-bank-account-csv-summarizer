@@ -2,23 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { downloadFileContent, findFinanceFolder, listFinanceFiles } from './utils/driveApi'
+import { prefetchPyodide, runSummarizer } from './utils/pyEngine'
 
-const CC_ROWS = [
-  { account: 'Chase Sapphire ···4521', spending: '−$980.20',  credits: '+$200.00' },
-  { account: 'Amex Gold ···8834',      spending: '−$760.30',  credits: '+$0.00'   },
-  { account: 'Citi Double ···1209',    spending: '−$600.00',  credits: '+$50.00'  },
-]
-
-const BANK_ROWS = [
-  { account: 'Chase Checking ···6789',  income: '+$4,300.00', net: '+$890.50' },
-  { account: 'Wells Fargo ···3312',     income: '+$1,500.00', net: '+$379.20' },
-]
-
-const MONTHLY_ROWS = [
-  { month: 'May 2025', spending: '−$2,340', credits: '+$250', txns: 47, open: true  },
-  { month: 'Apr 2025', spending: '−$2,890', credits: '+$100', txns: 53, open: false },
-  { month: 'Mar 2025', spending: '−$1,650', credits: '+$0',   txns: 38, open: false },
-]
+// Formatters mirroring multi_account_summarizer/writer.py's conventions:
+// spending is always shown with a leading "-", credits/income always "+".
+function fmtSpending(amount) { return `-$${Math.abs(amount ?? 0).toFixed(2)}` }
+function fmtCredit(amount)   { return `+$${Math.abs(amount ?? 0).toFixed(2)}` }
+function fmtAmount(amount) {
+  amount = amount ?? 0
+  return amount < 0 ? `-$${Math.abs(amount).toFixed(2)}` : `+$${amount.toFixed(2)}`
+}
+function fmtMonthLabel(monthKey) {
+  const [year, month] = monthKey.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' })
+}
 
 const PIPELINE_STAGES = (fileCount) => [
   ['Connecting to Google Drive', 'Scanning Finance/ folder', `Downloading ${fileCount} CSV files…`, 'Sending to Python engine', 'Building summary payload'],
@@ -316,12 +313,57 @@ function ProcessingScreen({ stageIndex, fileCount }) {
   )
 }
 
-function DashboardScreen({ openMonth, setOpenMonth, driveFiles, onRefresh }) {
+function DashboardScreen({ openMonth, setOpenMonth, driveFiles, summary, onRefresh }) {
+  const ccSummary = summary?.cc_summary ?? null
+  const bankSummary = summary?.bank_summary ?? null
+  const warnings = summary?.warnings ?? []
+
+  const ccRows = (ccSummary?.by_card ?? []).map(card => ({
+    account: card.name,
+    spending: fmtSpending(card.spending),
+    credits: fmtCredit(card.credits),
+  }))
+
+  // by_bank merges every account under the same institution into one row
+  // (it groups by account_name only) — use by_account instead so accounts
+  // from the same bank (e.g. two Chase checking CSVs) stay distinguishable,
+  // the same way by_card already does for credit cards.
+  const bankRows = (bankSummary?.by_account ?? [])
+    .map(account => {
+      const totals = (account.categories ?? []).reduce(
+        (sum, cat) => ({ spending: sum.spending + cat.spending, income: sum.income + cat.income }),
+        { spending: 0, income: 0 }
+      )
+      return {
+        account: `${account.account_name} (${account.last4})`,
+        income: fmtCredit(totals.income),
+        net: fmtAmount(totals.income + totals.spending),
+        _spending: totals.spending,
+      }
+    })
+    .sort((a, b) => a._spending - b._spending)
+
+  // Newest month first, to match the original mock's ordering. Kept as the
+  // raw monthly_cc entries (not just formatted strings) so the by_card/
+  // by_category breakdown is available when a row is expanded below.
+  const monthlyCcByRecency = [...(summary?.monthly_cc ?? [])].reverse()
+  const monthlyRows = monthlyCcByRecency.map(m => ({
+    month: fmtMonthLabel(m.month),
+    spending: fmtSpending(m.total_spending),
+    credits: fmtCredit(m.total_credits),
+    txns: (m.by_card ?? []).reduce((sum, c) => sum + c.transactions, 0),
+  }))
+
+  const allMonths = [...(summary?.monthly_cc ?? []), ...(summary?.monthly_bank ?? [])].map(m => m.month)
+  const headerLabel = allMonths.length ? fmtMonthLabel([...allMonths].sort().at(-1)) : 'All Time'
+
+  const netCashFlow = (bankSummary?.total_income ?? 0) + (bankSummary?.total_spending ?? 0) + (bankSummary?.total_cc_payments ?? 0)
+
   return (
     <>
       <div className="dash-topbar">
         <div>
-          <h2>May 2025 Summary</h2>
+          <h2>{headerLabel} Summary</h2>
           <span>Last updated: just now · {driveFiles.length} file{driveFiles.length === 1 ? '' : 's'} processed</span>
         </div>
         <button className="btn-ref-sm" onClick={onRefresh}>
@@ -329,22 +371,29 @@ function DashboardScreen({ openMonth, setOpenMonth, driveFiles, onRefresh }) {
         </button>
       </div>
 
-      <div className="section-title">Overview · May 2025</div>
+      {warnings.length > 0 && (
+        <div className="notice-box">
+          <strong>⚠ Some files were skipped</strong>
+          {warnings.join(' · ')}
+        </div>
+      )}
+
+      <div className="section-title">Overview · {headerLabel}</div>
       <div className="cards">
         <div className="card">
           <div className="label">Net Cash Flow</div>
-          <div className="value positive">+$1,269.70</div>
+          <div className={`value ${netCashFlow >= 0 ? 'positive' : 'negative'}`}>{fmtAmount(netCashFlow)}</div>
           <div className="sub">Income − All Spending</div>
         </div>
         <div className="card">
           <div className="label">Credit Card Spending</div>
-          <div className="value negative">−$2,340.50</div>
-          <div className="sub">Across 3 cards</div>
+          <div className="value negative">{fmtSpending(ccSummary?.total_spending ?? 0)}</div>
+          <div className="sub">Across {ccSummary?.total_cards ?? 0} card{ccSummary?.total_cards === 1 ? '' : 's'}</div>
         </div>
         <div className="card">
           <div className="label">Bank Income</div>
-          <div className="value neutral">$5,800.00</div>
-          <div className="sub">2 accounts</div>
+          <div className="value neutral">{fmtCredit(bankSummary?.total_income ?? 0)}</div>
+          <div className="sub">{bankSummary?.total_accounts ?? 0} account{bankSummary?.total_accounts === 1 ? '' : 's'}</div>
         </div>
       </div>
 
@@ -369,7 +418,10 @@ function DashboardScreen({ openMonth, setOpenMonth, driveFiles, onRefresh }) {
               <tr><th>Account</th><th>Spending</th><th>Credits</th></tr>
             </thead>
             <tbody>
-              {CC_ROWS.map(row => (
+              {ccRows.length === 0 && (
+                <tr><td colSpan={3} className="empty-row">No credit card files found</td></tr>
+              )}
+              {ccRows.map(row => (
                 <tr key={row.account}>
                   <td>{row.account}</td>
                   <td className="amount-neg">{row.spending}</td>
@@ -386,11 +438,14 @@ function DashboardScreen({ openMonth, setOpenMonth, driveFiles, onRefresh }) {
               <tr><th>Account</th><th>Income</th><th>Net Flow</th></tr>
             </thead>
             <tbody>
-              {BANK_ROWS.map(row => (
+              {bankRows.length === 0 && (
+                <tr><td colSpan={3} className="empty-row">No bank account files found</td></tr>
+              )}
+              {bankRows.map(row => (
                 <tr key={row.account}>
                   <td>{row.account}</td>
                   <td className="amount-pos">{row.income}</td>
-                  <td className="amount-pos">{row.net}</td>
+                  <td className={row.net.startsWith('-') ? 'amount-neg' : 'amount-pos'}>{row.net}</td>
                 </tr>
               ))}
             </tbody>
@@ -401,28 +456,94 @@ function DashboardScreen({ openMonth, setOpenMonth, driveFiles, onRefresh }) {
       <div className="section-title">Monthly Breakdown</div>
       <div className="monthly-card">
         <h4>Credit Card · Monthly Detail</h4>
-        {MONTHLY_ROWS.map((row, i) => (
-          <div key={row.month} className="month-row" onClick={() => setOpenMonth(i)}>
-            <div className="month-name">{row.month}</div>
-            <div className="month-stats">
-              <div className="month-stat">
-                <div className="stat-label">Spending</div>
-                <div className="stat-value amount-neg">{row.spending}</div>
+        {monthlyRows.length === 0 && <div className="empty-row">No credit card transactions found</div>}
+        {monthlyRows.map((row, i) => {
+          const isOpen = openMonth === i
+          const monthDetail = monthlyCcByRecency[i]
+          return (
+            <div key={row.month}>
+              <div className="month-row" onClick={() => setOpenMonth(isOpen ? null : i)}>
+                <div className="month-name">{row.month}</div>
+                <div className="month-stats">
+                  <div className="month-stat">
+                    <div className="stat-label">Spending</div>
+                    <div className="stat-value amount-neg">{row.spending}</div>
+                  </div>
+                  <div className="month-stat">
+                    <div className="stat-label">Credits</div>
+                    <div className="stat-value amount-pos">{row.credits}</div>
+                  </div>
+                  <div className="month-stat">
+                    <div className="stat-label">Transactions</div>
+                    <div className="stat-value">{row.txns}</div>
+                  </div>
+                </div>
+                <div className="chevron">{isOpen ? '▼' : '▶'}</div>
               </div>
-              <div className="month-stat">
-                <div className="stat-label">Credits</div>
-                <div className="stat-value amount-pos">{row.credits}</div>
-              </div>
-              <div className="month-stat">
-                <div className="stat-label">Transactions</div>
-                <div className="stat-value">{row.txns}</div>
-              </div>
+              {isOpen && (
+                <div className="month-detail">
+                  <div className="month-detail-cols">
+                    <div className="month-detail-col">
+                      <h5>By Card</h5>
+                      <table>
+                        <thead>
+                          <tr><th>Card</th><th>Txns</th><th>Spending</th><th>Credits</th></tr>
+                        </thead>
+                        <tbody>
+                          {(monthDetail.by_card ?? []).map(card => (
+                            <tr key={card.name}>
+                              <td>{card.name}</td>
+                              <td>{card.transactions}</td>
+                              <td className="amount-neg">{fmtSpending(card.spending)}</td>
+                              <td className="amount-pos">{fmtCredit(card.credits)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="month-detail-col">
+                      <h5>By Category</h5>
+                      <table>
+                        <thead>
+                          <tr><th>Category</th><th>Txns</th><th>Spending</th><th>Credits</th></tr>
+                        </thead>
+                        <tbody>
+                          {(monthDetail.by_category ?? []).map(cat => (
+                            <tr key={cat.category}>
+                              <td>{cat.category}</td>
+                              <td>{cat.count}</td>
+                              <td className="amount-neg">{fmtSpending(cat.spending)}</td>
+                              <td className="amount-pos">{fmtCredit(cat.credits)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="chevron">{openMonth === i ? '▼' : '▶'}</div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </>
+  )
+}
+
+function ProcessingErrorScreen({ error, onRetry }) {
+  return (
+    <div className="flow-setup">
+      <div className="setup-icon">⚠️</div>
+      <h1 className="setup-title">Couldn't build your summary</h1>
+      <p className="setup-sub">Something went wrong while parsing your CSVs in the browser.</p>
+      <div className="notice-box">
+        <strong>⚠ Processing error</strong>
+        {error}
+      </div>
+      <div className="refresh-cta">
+        <button className="btn-refresh" onClick={onRetry}>🔄 Try again</button>
+      </div>
+    </div>
   )
 }
 
@@ -430,12 +551,14 @@ export default function App() {
   const { accessToken, profile, error, signIn, signOut } = useGoogleAuth()
   const [openMonth, setOpenMonth] = useState(0)
 
-  // 'landing' | 'checking' | 'setup' | 'files' | 'processing' | 'dashboard'
+  // 'landing' | 'checking' | 'setup' | 'files' | 'processing' | 'processing-error' | 'dashboard'
   const [screen, setScreen] = useState(accessToken ? 'checking' : 'landing')
   const [setupReason, setSetupReason] = useState(null) // 'no-folder' | 'no-files' | 'error'
   const [driveFiles, setDriveFiles] = useState([])
   const [driveError, setDriveError] = useState(null)
   const [stageIndex, setStageIndex] = useState(0)
+  const [summary, setSummary] = useState(null)
+  const [pipelineError, setPipelineError] = useState(null)
   const pipelineTimer = useRef(null)
 
   // async：这个函式里面有要等待的事（找 Finance 资料夹、找档案都要等 Drive API 回应）。
@@ -467,21 +590,42 @@ export default function App() {
     }
   }
 
-  const runPipeline = () => {
+  // Real pipeline: download each CSV's content from Drive, hand it to the
+  // Python engine running in Pyodide (multi_account_summarizer/browser_api.py),
+  // and show whatever it computes — no more fake timers.
+  const runPipeline = async () => {
     setScreen('processing')
     setStageIndex(0)
-    let stage = 0
-    const advance = () => {
-      stage++
-      if (stage >= 4) {
-        pipelineTimer.current = setTimeout(() => setScreen('dashboard'), 600)
-        return
-      }
-      setStageIndex(stage)
-      pipelineTimer.current = setTimeout(advance, 900)
+    setPipelineError(null)
+    try {
+      setStageIndex(1)
+      const files = await Promise.all(
+        driveFiles.map(async (file) => ({
+          accountType: file.accountType,
+          institution: file.institution,
+          name: file.name,
+          content: await downloadFileContent(accessToken, file.id),
+        }))
+      )
+
+      setStageIndex(2)
+      const result = await runSummarizer(files)
+
+      setStageIndex(3)
+      setSummary(result)
+      pipelineTimer.current = setTimeout(() => setScreen('dashboard'), 600)
+    } catch (err) {
+      setPipelineError(err.message)
+      setScreen('processing-error')
     }
-    pipelineTimer.current = setTimeout(advance, 900)
   }
+
+  // The Pyodide runtime is several MB and slow to cold-start — start loading
+  // it in the background as soon as the user can see their files, so it's
+  // likely already warm by the time they click "Continue."
+  useEffect(() => {
+    if (screen === 'files') prefetchPyodide()
+  }, [screen])
 
   useEffect(() => {
     if (accessToken) {
@@ -531,11 +675,15 @@ export default function App() {
         {screen === 'processing' && (
           <ProcessingScreen stageIndex={stageIndex} fileCount={driveFiles.length} />
         )}
+        {screen === 'processing-error' && (
+          <ProcessingErrorScreen error={pipelineError} onRetry={runPipeline} />
+        )}
         {screen === 'dashboard' && (
           <DashboardScreen
             openMonth={openMonth}
             setOpenMonth={setOpenMonth}
             driveFiles={driveFiles}
+            summary={summary}
             onRefresh={handleRefresh}
           />
         )}
