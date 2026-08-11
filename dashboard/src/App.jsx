@@ -154,11 +154,15 @@ function SetupScreen({ reason, driveError, onRefresh }) {
             <div className="folder-tree">
               <span className="dir">📁 Finance/</span><br/>
               <span className="dir">├── 📁 Bank/</span><br/>
-              <span className="dir">│   └── 📁 Chase/</span><br/>
-              <span className="file">│       └── chase_checking_9809.csv</span><br/>
+              <span className="dir">│   ├── 📁 Chase/</span><br/>
+              <span className="file">│   │   └── chase_checking_9809.csv</span><br/>
+              <span className="dir">│   └── 📁 WellsFargo/</span><br/>
+              <span className="file">│       └── wells_fargo_5454.csv</span><br/>
               <span className="dir">└── 📁 CreditCard/</span><br/>
+              <span className="dir">    ├── 📁 Chase/</span><br/>
+              <span className="file">    │   └── chase_sapphire_1234.csv</span><br/>
               <span className="dir">    ├── 📁 Amex/</span><br/>
-              <span className="file">    │   └── amex_gold_1234.csv</span><br/>
+              <span className="file">    │   └── amex_gold_5678.csv</span><br/>
               <span className="dir">    └── 📁 Citi/</span><br/>
               <span className="file">        └── citi_double_5555.csv</span>
             </div>
@@ -169,7 +173,7 @@ function SetupScreen({ reason, driveError, onRefresh }) {
           <div className="step-num-badge">2</div>
           <div className="step-body">
             <h4>Download CSV exports from your bank</h4>
-            <p>Log into each bank's website and export your transaction history as a <strong>.csv</strong> file. Supported: Chase, Amex, Citi, Wells Fargo, Fidelity.</p>
+            <p>Log into each bank's website and export your transaction history as a <strong>.csv</strong> file. Supported: Chase, Amex, Citi, Wells Fargo.</p>
           </div>
         </div>
 
