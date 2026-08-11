@@ -140,6 +140,13 @@ tr:hover td { background: #f8f9fa; }
 .month-stat .stat-value { font-weight: 600; }
 .chevron { color: #b2bec3; font-size: 0.75rem; }
 
+.month-detail { padding: 4px 8px 18px; border-bottom: 1px solid #f0f0f0; background: #fafbfc; }
+.month-detail-cols { display: flex; gap: 2rem; flex-wrap: wrap; }
+.month-detail-col { flex: 1; min-width: 220px; }
+.month-detail-col h5 { font-size: 0.7rem; font-weight: 600; color: #636e72; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+
+.empty-row { color: #b2bec3; text-align: center; padding: 1rem; font-size: 0.82rem; }
+
 /* ── DASHBOARD TOPBAR ── */
 .dash-topbar {
   display: flex; align-items: center; justify-content: space-between;

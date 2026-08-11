@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
+    "pyodide": "^314.0.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
@@ -18,6 +20,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vite-plugin-static-copy": "^4.1.1",
+    "vitest": "^4.1.10"
   }
 }
