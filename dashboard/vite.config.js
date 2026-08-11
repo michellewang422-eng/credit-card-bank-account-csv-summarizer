@@ -38,4 +38,12 @@ export default defineConfig({
       allow: ['..'],
     },
   },
+  test: {
+    environment: 'node',
+    // pyEngine.test.js loads the real Pyodide WASM runtime once (~seconds,
+    // not milliseconds) and runs actual Python through it — default 5s
+    // hook/test timeouts are too tight for that.
+    hookTimeout: 30000,
+    testTimeout: 30000,
+  },
 })

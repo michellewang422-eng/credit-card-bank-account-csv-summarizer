@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { downloadFileContent, findFinanceFolder, listFinanceFiles } from './utils/driveApi'
-import { prefetchPyodide, runSummarizer } from './utils/pyEngine'
+import { clearCsvData, prefetchPyodide, runSummarizer } from './utils/pyEngine'
 
 // Formatters mirroring multi_account_summarizer/writer.py's conventions:
 // spending is always shown with a leading "-", credits/income always "+".
@@ -640,8 +640,14 @@ export default function App() {
 
   useEffect(() => () => clearTimeout(pipelineTimer.current), [])
 
+  // Signing out revokes the Google token, but the already-computed summary
+  // and any CSV content Pyodide still has in memory would otherwise linger
+  // in this tab until it's closed/reloaded — wipe both explicitly so a
+  // signed-out user's financial data doesn't stay visible/reachable.
   const handleSignOut = () => {
     clearTimeout(pipelineTimer.current)
+    setSummary(null)
+    clearCsvData()
     signOut()
   }
 
