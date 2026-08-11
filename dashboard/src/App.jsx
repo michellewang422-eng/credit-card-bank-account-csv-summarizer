@@ -150,20 +150,21 @@ function SetupScreen({ reason, driveError, onRefresh }) {
           <div className="step-num-badge">1</div>
           <div className="step-body">
             <h4>Create the folder structure in Google Drive</h4>
-            <p>Open Google Drive and create the following folder layout at the root. The app scans exactly these paths to find your CSVs.</p>
+            <p>Open Google Drive and create the following folder layout at the root. The app scans exactly these paths to find your CSVs. Name each CSV <span className="path-chip">AccountName_1234.csv</span>, ending with the account's last 4 digits — that's how the app tells apart multiple accounts at the same bank.</p>
             <div className="folder-tree">
               <span className="dir">📁 Finance/</span><br/>
               <span className="dir">├── 📁 Bank/</span><br/>
-              <span className="dir">│   └── 📁 Chase/</span><br/>
-              <span className="file">│       └── chase_checking_may2025.csv</span><br/>
-              <span className="dir">├── 📁 CreditCard/</span><br/>
-              <span className="dir">│   ├── 📁 Amex/</span><br/>
-              <span className="file">│   │   └── amex_gold_may2025.csv</span><br/>
-              <span className="dir">│   └── 📁 Citi/</span><br/>
-              <span className="file">│       └── citi_double_may2025.csv</span><br/>
-              <span className="dir">└── 📁 Investment/</span><br/>
-              <span className="dir">    └── 📁 Fidelity/</span><br/>
-              <span className="file">        └── fidelity_may2025.csv</span>
+              <span className="dir">│   ├── 📁 Chase/</span><br/>
+              <span className="file">│   │   └── chase_checking_9809.csv</span><br/>
+              <span className="dir">│   └── 📁 WellsFargo/</span><br/>
+              <span className="file">│       └── wells_fargo_5454.csv</span><br/>
+              <span className="dir">└── 📁 CreditCard/</span><br/>
+              <span className="dir">    ├── 📁 Chase/</span><br/>
+              <span className="file">    │   └── chase_sapphire_1234.csv</span><br/>
+              <span className="dir">    ├── 📁 Amex/</span><br/>
+              <span className="file">    │   └── amex_gold_5678.csv</span><br/>
+              <span className="dir">    └── 📁 Citi/</span><br/>
+              <span className="file">        └── citi_double_5555.csv</span>
             </div>
           </div>
         </div>
@@ -172,7 +173,7 @@ function SetupScreen({ reason, driveError, onRefresh }) {
           <div className="step-num-badge">2</div>
           <div className="step-body">
             <h4>Download CSV exports from your bank</h4>
-            <p>Log into each bank's website and export your transaction history as a <strong>.csv</strong> file. Supported: Chase, Amex, Citi, Wells Fargo, Fidelity.</p>
+            <p>Log into each bank's website and export your transaction history as a <strong>.csv</strong> file. Supported: Chase, Amex, Citi, Wells Fargo.</p>
           </div>
         </div>
 
